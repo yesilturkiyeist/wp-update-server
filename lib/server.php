@@ -8,7 +8,8 @@
 
 namespace YTUpdate;
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
+const DAY_SECONDS = 86400;
 
 class HttpError extends \Exception {}
 
@@ -250,11 +251,46 @@ final class Server {
 			return htmlspecialchars( (string) $s, ENT_QUOTES, 'UTF-8' );
 		};
 		echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YT Update Server</title>';
-		echo '<style>pre{background:#fff;border:1px solid #e3e8e4;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all}body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#1d2a22;background:#f6f8f6}h1{font-size:20px}h2{font-size:16px;margin-top:28px}table{border-collapse:collapse;background:#fff;width:100%;max-width:1100px}td,th{border-bottom:1px solid #e3e8e4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#eef3ef}.old{color:#b4581c;font-weight:600}.ok{color:#247833}small{color:#667}</style>';
+		echo '<style>pre{background:#fff;border:1px solid #e3e8e4;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all}body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#1d2a22;background:#f6f8f6}h1{font-size:20px}h2{font-size:16px;margin-top:28px}table{border-collapse:collapse;background:#fff;width:100%;max-width:1100px}td,th{border-bottom:1px solid #e3e8e4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#eef3ef}.old{color:#b4581c;font-weight:600}.ok{color:#247833}.muted{color:#889}.box{background:#fff;border:1px solid #e3e8e4;padding:4px 14px;margin:12px 0;max-width:1070px}.in{padding:6px;width:300px}.btn{padding:6px 12px;cursor:pointer}small{color:#667}</style>';
 		echo '<h1>YT Update Server <small>' . $e( VERSION ) . ' · ' . $e( $this->config['repo'] ) . '</small></h1>';
 		echo '<p><a href="?flush=1">GitHub\'dan yeniden oku</a></p>';
 		if ( $gh_error ) {
-			echo '<p class="old">' . $e( $gh_error ) . '</p>';
+			echo '<p class="old">● GitHub: ' . $e( $gh_error ) . '</p>';
+		} else {
+			echo '<p class="ok">● GitHub bağlı: ' . count( $catalog ) . ' paket okundu (' . $e( $this->config['repo'] ) . ')</p>';
+		}
+
+		// Anahtar testi: anahtarın config'te kayıtlı olup olmadığını ve hangi paketleri göreceğini gösterir.
+		$test_key = isset( $_POST['test_key'] ) ? trim( (string) $_POST['test_key'] ) : '';
+		if ( '' !== $test_key ) {
+			$found = null;
+			$th    = hash( 'sha256', $test_key );
+			foreach ( $this->config['sites'] as $h => $conf ) {
+				if ( hash_equals( strtolower( (string) $h ), $th ) ) {
+					$found = $conf;
+					break;
+				}
+			}
+			echo '<div class="box">';
+			if ( ! $found ) {
+				echo '<p class="old"><b>✗ Bu anahtar config.php › sites içinde yok.</b> Üretilen satırı ekleyip kaydettiniz mi? (hash: <code>' . $e( substr( $th, 0, 12 ) ) . '…</code>)</p>';
+			} else {
+				$tsite = array(
+					'packages' => $found['packages'] ?? '*',
+					'channel'  => ( $found['channel'] ?? 'stable' ) === 'beta' ? 'beta' : 'stable',
+				);
+				$visible = array();
+				foreach ( ( 'beta' === $tsite['channel'] ? $catalog : $stable ) as $slug => $r ) {
+					if ( $this->site_allows( $tsite, $slug ) ) {
+						$visible[] = $slug . ' ' . $r['version'];
+					}
+				}
+				$seen = $sites[ $th ]['last_seen'] ?? '';
+				echo '<p class="ok"><b>✓ Anahtar geçerli: ' . $e( $found['name'] ?? '' ) . '</b> (kanal: ' . $e( $tsite['channel'] ) . ')</p>';
+				echo '<p>Bu site ' . count( $visible ) . ' paket görecek: ' . $e( implode( ', ', $visible ) ?: '—' ) . '</p>';
+				echo '<p>' . ( $seen ? 'Site en son ' . $e( $seen ) . ' bağlandı.' : 'Site henüz hiç bağlanmadı: WordPress › Ayarlar › YT Güncelleyici › Şimdi kontrol et.' ) . '</p>';
+			}
+			echo '</div>';
 		}
 
 		// SSH olmayan hosting için: site anahtarı üretici. Anahtar yalnız bu ekranda bir kez görünür, saklanmaz.
@@ -270,8 +306,11 @@ final class Server {
 			echo '<pre>\'' . $e( $hash ) . '\' => array( \'name\' => ' . $e( var_export( $site['name'], true ) ) . ', \'packages\' => \'*\', \'channel\' => \'stable\' ),</pre>';
 			echo '<p>Ortam değişkeni kullanıyorsanız YT_UPDATE_SITES JSON öğesi:</p>';
 			echo '<pre>"' . $e( $hash ) . '": ' . $e( json_encode( $site, JSON_UNESCAPED_UNICODE ) ) . '</pre>';
+			echo '<p><b>3) config.php\'yi kaydettikten sonra test edin:</b></p>';
+			echo '<form method="post"><input type="hidden" name="test_key" value="' . $e( $key ) . '"><button class="btn">Bu anahtarı test et</button></form>';
 		}
-		echo '<h2>Site anahtarı üret</h2><form method="post"><input name="site_name" placeholder="Site adı (ör. Hayır Kapısı)" required style="padding:6px;width:260px"> <button style="padding:6px 12px">Üret</button></form>';
+		echo '<h2>Site anahtarı üret</h2><form method="post"><input name="site_name" placeholder="Site adı (ör. Hayır Kapısı)" required class="in"> <button class="btn">Üret</button></form>';
+		echo '<h2>Anahtar test et</h2><form method="post"><input name="test_key" placeholder="ytu_…" required class="in" autocomplete="off"> <button class="btn">Test et</button></form>';
 
 		echo '<h2>Paketler</h2><table><tr><th>Paket</th><th>Tür</th><th>Son sürüm</th><th>Yayın</th></tr>';
 		foreach ( $catalog as $slug => $r ) {
@@ -280,7 +319,7 @@ final class Server {
 		}
 		echo '</table>';
 
-		echo '<h2>Siteler</h2><table><tr><th>Site</th><th>Son görülme</th><th>WP / PHP</th><th>Kurulu paketler</th></tr>';
+		echo '<h2>Siteler</h2><table><tr><th>Site</th><th>Durum</th><th>Son görülme</th><th>WP / PHP</th><th>Kurulu paketler</th></tr>';
 		foreach ( $this->config['sites'] as $hash => $conf ) {
 			$st   = $sites[ $hash ] ?? array();
 			$pkgs = array();
@@ -289,7 +328,15 @@ final class Server {
 				$cls    = $latest && version_compare( (string) $ver, $latest, '<' ) ? 'old' : 'ok';
 				$pkgs[] = $e( $slug ) . ' <span class="' . $cls . '">' . $e( $ver ) . '</span>';
 			}
-			echo '<tr><td><b>' . $e( $conf['name'] ?? '?' ) . '</b><br><small>' . $e( $st['url'] ?? '' ) . '</small></td><td>' . $e( $st['last_seen'] ?? '—' ) . '</td><td>' . $e( ( $st['wp'] ?? '' ) . ' / ' . ( $st['php'] ?? '' ) ) . '</td><td>' . ( $pkgs ? implode( '<br>', $pkgs ) : '—' ) . '</td></tr>';
+			$ts = (int) ( $st['last_seen_ts'] ?? 0 );
+			if ( ! $ts && empty( $st['last_seen'] ) ) {
+				$state = '<span class="muted">● Hiç bağlanmadı</span>';
+			} elseif ( $ts && time() - $ts > 2 * DAY_SECONDS ) {
+				$state = '<span class="old">● ' . (int) floor( ( time() - $ts ) / DAY_SECONDS ) . ' gündür bağlanmadı</span>';
+			} else {
+				$state = '<span class="ok">● Bağlı</span>';
+			}
+			echo '<tr><td><b>' . $e( $conf['name'] ?? '?' ) . '</b><br><small>' . $e( $st['url'] ?? '' ) . '</small></td><td>' . $state . '</td><td>' . $e( $st['last_seen'] ?? '—' ) . '</td><td>' . $e( ( $st['wp'] ?? '' ) . ' / ' . ( $st['php'] ?? '' ) ) . '</td><td>' . ( $pkgs ? implode( '<br>', $pkgs ) : '—' ) . '</td></tr>';
 		}
 		echo '</table>';
 	}
@@ -350,6 +397,7 @@ final class Server {
 					'php'       => substr( (string) ( $body['php'] ?? '' ), 0, 20 ),
 					'packages'  => $pkgs,
 					'last_seen' => gmdate( 'Y-m-d H:i' ) . ' UTC',
+					'last_seen_ts' => time(),
 				);
 				$this->write_json( $file, $all );
 			}
