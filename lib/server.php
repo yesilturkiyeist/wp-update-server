@@ -8,7 +8,7 @@
 
 namespace YTUpdate;
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const DAY_SECONDS = 86400;
 
 class HttpError extends \Exception {}
@@ -99,8 +99,9 @@ final class Server {
 			}
 		}
 
-		$catalog = $this->catalog( $site['channel'] );
-		$out     = array();
+		$catalog  = $this->catalog( $site['channel'] );
+		$versions = $this->versions( $site['channel'] );
+		$out      = array();
 		foreach ( $catalog as $slug => $rel ) {
 			if ( ! $this->site_allows( $site, $slug ) ) {
 				continue;
@@ -117,6 +118,7 @@ final class Server {
 				'changelog'    => $rel['changelog_html'],
 				'released'     => $rel['published_at'],
 				'size'         => $rel['size'],
+				'versions'     => $versions[ $slug ] ?? array(),
 			);
 		}
 
@@ -313,6 +315,33 @@ final class Server {
 			}
 		}
 		ksort( $out );
+		return $out;
+	}
+
+	/**
+	 * Paket başına indirilebilir sürümler (yeniden eskiye, en çok 20): sürüm geri alma için.
+	 */
+	public function versions( string $channel ): array {
+		$out = array();
+		foreach ( $this->releases() as $r ) {
+			if ( ! $r['asset_id'] || ( $r['prerelease'] && 'beta' !== $channel ) ) {
+				continue;
+			}
+			$out[ $r['slug'] ][] = array(
+				'version'  => $r['version'],
+				'released' => $r['published_at'],
+				'package'  => $this->base_url() . '/v1/download/' . $r['slug'] . '/' . rawurlencode( $r['version'] ) . '.zip',
+			);
+		}
+		foreach ( $out as $slug => $list ) {
+			usort(
+				$list,
+				static function ( $a, $b ) {
+					return version_compare( $b['version'], $a['version'] );
+				}
+			);
+			$out[ $slug ] = array_slice( $list, 0, 20 );
+		}
 		return $out;
 	}
 
