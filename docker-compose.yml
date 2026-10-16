@@ -4,7 +4,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      YT_UPDATE_BASE_URL: https://update.ustageliyor.org
+      YT_UPDATE_BASE_URL: https://update.yesilturkiyeist.org
       YT_UPDATE_REPO: yesilturkiyeist/wp-paketler
       YT_UPDATE_GITHUB_TOKEN: ${YT_UPDATE_GITHUB_TOKEN}
       YT_UPDATE_WEBHOOK_SECRET: ${YT_UPDATE_WEBHOOK_SECRET}

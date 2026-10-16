@@ -8,7 +8,7 @@
 
 namespace YTUpdate;
 
-const VERSION = '1.0.2';
+const VERSION = '1.1.0';
 const DAY_SECONDS = 86400;
 
 class HttpError extends \Exception {}
@@ -67,8 +67,12 @@ final class Server {
 				$this->route_webhook();
 				return;
 			}
-			if ( '/status' === $path ) {
-				$this->route_status();
+			if ( '/admin' === $path || '/status' === $path ) {
+				if ( '/status' === $path ) {
+					header( 'Location: ' . $this->base_url() . '/admin', true, 302 );
+					return;
+				}
+				( new Panel( $this, $this->config ) )->handle( $method );
 				return;
 			}
 			throw new HttpError( 'Not found', 404 );
@@ -208,137 +212,24 @@ final class Server {
 		$this->json( array( 'ok' => true, 'flushed' => true ) );
 	}
 
-	/* ------------------------------------------------------------------ */
-	/* /status: hangi site hangi sürümde (basic auth)                      */
-	/* ------------------------------------------------------------------ */
+	/** Sitelerin son bildirdiği durum (sites.json): hash => {...}. */
+	public function site_states(): array {
+		return $this->read_json( $this->data_dir . '/sites.json' );
+	}
 
-	private function route_status(): void {
-		$user = $_SERVER['PHP_AUTH_USER'] ?? '';
-		$pass = $_SERVER['PHP_AUTH_PW'] ?? '';
-		$auth = $_SERVER['HTTP_AUTHORIZATION'] ?? ( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '' );
-		if ( '' === $user && preg_match( '/^Basic\s+(\S+)$/i', $auth, $m ) ) {
-			list( $user, $pass ) = array_pad( explode( ':', (string) base64_decode( $m[1] ), 2 ), 2, '' );
-		}
-		$hash  = (string) $this->config['admin_password_hash'];
-		$plain = (string) $this->config['admin_password'];
-		$pw_ok = ( '' !== $hash && password_verify( $pass, $hash ) ) || ( '' === $hash && strlen( $plain ) >= 10 && hash_equals( $plain, $pass ) );
-		if ( ! $pw_ok || ! hash_equals( (string) $this->config['admin_user'], $user ) ) {
-			if ( '' !== $user ) {
-				usleep( 500000 );
-			}
-			header( 'WWW-Authenticate: Basic realm="YT Update Server"' );
-			throw new HttpError( 'Unauthorized', 401 );
-		}
+	/** Release önbelleğini boşaltır; bir sonraki istek GitHub'dan okur. */
+	public function flush_cache(): void {
+		@unlink( $this->data_dir . '/releases.json' );
+	}
 
-		if ( isset( $_GET['flush'] ) ) {
-			@unlink( $this->data_dir . '/releases.json' );
-		}
-
-		$gh_error = '';
+	/** GitHub'a token ile erişilebiliyor mu (önbelleği kullanmadan). */
+	public function test_github(): string {
 		try {
-			$catalog = $this->catalog( 'beta' );
-			$stable  = $this->catalog( 'stable' );
-		} catch ( \Throwable $ex ) {
-			$catalog  = array();
-			$stable   = array();
-			$gh_error = 'GitHub release listesi okunamadı: token ve repo ayarını kontrol edin.';
+			$repo = json_decode( $this->github( '/repos/' . $this->config['repo'] ), true );
+			return is_array( $repo ) && ! empty( $repo['full_name'] ) ? '' : 'Beklenmeyen yanıt';
+		} catch ( \Throwable $e ) {
+			return $e->getMessage();
 		}
-		$sites   = $this->read_json( $this->data_dir . '/sites.json' );
-
-		header( 'Content-Type: text/html; charset=utf-8' );
-		header( 'Cache-Control: no-store' );
-		$e = static function ( $s ) {
-			return htmlspecialchars( (string) $s, ENT_QUOTES, 'UTF-8' );
-		};
-		echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YT Update Server</title>';
-		echo '<style>pre{background:#fff;border:1px solid #e3e8e4;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all}body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#1d2a22;background:#f6f8f6}h1{font-size:20px}h2{font-size:16px;margin-top:28px}table{border-collapse:collapse;background:#fff;width:100%;max-width:1100px}td,th{border-bottom:1px solid #e3e8e4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#eef3ef}.old{color:#b4581c;font-weight:600}.ok{color:#247833}.muted{color:#889}.box{background:#fff;border:1px solid #e3e8e4;padding:4px 14px;margin:12px 0;max-width:1070px}.in{padding:6px;width:300px}.btn{padding:6px 12px;cursor:pointer}small{color:#667}</style>';
-		echo '<h1>YT Update Server <small>' . $e( VERSION ) . ' · ' . $e( $this->config['repo'] ) . '</small></h1>';
-		echo '<p><a href="?flush=1">GitHub\'dan yeniden oku</a></p>';
-		if ( $gh_error ) {
-			echo '<p class="old">● GitHub: ' . $e( $gh_error ) . '</p>';
-		} else {
-			echo '<p class="ok">● GitHub bağlı: ' . count( $catalog ) . ' paket okundu (' . $e( $this->config['repo'] ) . ')</p>';
-		}
-
-		// Anahtar testi: anahtarın config'te kayıtlı olup olmadığını ve hangi paketleri göreceğini gösterir.
-		$test_key = isset( $_POST['test_key'] ) ? trim( (string) $_POST['test_key'] ) : '';
-		if ( '' !== $test_key ) {
-			$found = null;
-			$th    = hash( 'sha256', $test_key );
-			foreach ( $this->config['sites'] as $h => $conf ) {
-				if ( hash_equals( strtolower( (string) $h ), $th ) ) {
-					$found = $conf;
-					break;
-				}
-			}
-			echo '<div class="box">';
-			if ( ! $found ) {
-				echo '<p class="old"><b>✗ Bu anahtar config.php › sites içinde yok.</b> Üretilen satırı ekleyip kaydettiniz mi? (hash: <code>' . $e( substr( $th, 0, 12 ) ) . '…</code>)</p>';
-			} else {
-				$tsite = array(
-					'packages' => $found['packages'] ?? '*',
-					'channel'  => ( $found['channel'] ?? 'stable' ) === 'beta' ? 'beta' : 'stable',
-				);
-				$visible = array();
-				foreach ( ( 'beta' === $tsite['channel'] ? $catalog : $stable ) as $slug => $r ) {
-					if ( $this->site_allows( $tsite, $slug ) ) {
-						$visible[] = $slug . ' ' . $r['version'];
-					}
-				}
-				$seen = $sites[ $th ]['last_seen'] ?? '';
-				echo '<p class="ok"><b>✓ Anahtar geçerli: ' . $e( $found['name'] ?? '' ) . '</b> (kanal: ' . $e( $tsite['channel'] ) . ')</p>';
-				echo '<p>Bu site ' . count( $visible ) . ' paket görecek: ' . $e( implode( ', ', $visible ) ?: '—' ) . '</p>';
-				echo '<p>' . ( $seen ? 'Site en son ' . $e( $seen ) . ' bağlandı.' : 'Site henüz hiç bağlanmadı: WordPress › Ayarlar › YT Güncelleyici › Şimdi kontrol et.' ) . '</p>';
-			}
-			echo '</div>';
-		}
-
-		// SSH olmayan hosting için: site anahtarı üretici. Anahtar yalnız bu ekranda bir kez görünür, saklanmaz.
-		$new_name = isset( $_POST['site_name'] ) ? trim( (string) $_POST['site_name'] ) : '';
-		if ( '' !== $new_name ) {
-			$key  = 'ytu_' . bin2hex( random_bytes( 24 ) );
-			$hash = hash( 'sha256', $key );
-			$site = array( 'name' => mb_substr( $new_name, 0, 80 ), 'packages' => '*', 'channel' => 'stable' );
-			echo '<h2>Yeni site anahtarı: ' . $e( $site['name'] ) . '</h2>';
-			echo '<p><b>1) Sitenin wp-config.php dosyasına</b> (bu sayfayı kapatınca anahtar bir daha gösterilmez):</p>';
-			echo '<pre>define( \'YT_UPDATE_KEY\', \'' . $e( $key ) . '\' );</pre>';
-			echo '<p><b>2) Sunucudaki config.php › sites içine:</b></p>';
-			echo '<pre>\'' . $e( $hash ) . '\' => array( \'name\' => ' . $e( var_export( $site['name'], true ) ) . ', \'packages\' => \'*\', \'channel\' => \'stable\' ),</pre>';
-			echo '<p>Ortam değişkeni kullanıyorsanız YT_UPDATE_SITES JSON öğesi:</p>';
-			echo '<pre>"' . $e( $hash ) . '": ' . $e( json_encode( $site, JSON_UNESCAPED_UNICODE ) ) . '</pre>';
-			echo '<p><b>3) config.php\'yi kaydettikten sonra test edin:</b></p>';
-			echo '<form method="post"><input type="hidden" name="test_key" value="' . $e( $key ) . '"><button class="btn">Bu anahtarı test et</button></form>';
-		}
-		echo '<h2>Site anahtarı üret</h2><form method="post"><input name="site_name" placeholder="Site adı (ör. Hayır Kapısı)" required class="in"> <button class="btn">Üret</button></form>';
-		echo '<h2>Anahtar test et</h2><form method="post"><input name="test_key" placeholder="ytu_…" required class="in" autocomplete="off"> <button class="btn">Test et</button></form>';
-
-		echo '<h2>Paketler</h2><table><tr><th>Paket</th><th>Tür</th><th>Son sürüm</th><th>Yayın</th></tr>';
-		foreach ( $catalog as $slug => $r ) {
-			$pre = isset( $stable[ $slug ] ) && $stable[ $slug ]['version'] === $r['version'] ? '' : ' <small>(beta)</small>';
-			echo '<tr><td><b>' . $e( $r['name'] ) . '</b><br><small>' . $e( $slug ) . '</small></td><td>' . $e( $r['type'] ) . '</td><td>' . $e( $r['version'] ) . $pre . '</td><td>' . $e( substr( $r['published_at'], 0, 16 ) ) . '</td></tr>';
-		}
-		echo '</table>';
-
-		echo '<h2>Siteler</h2><table><tr><th>Site</th><th>Durum</th><th>Son görülme</th><th>WP / PHP</th><th>Kurulu paketler</th></tr>';
-		foreach ( $this->config['sites'] as $hash => $conf ) {
-			$st   = $sites[ $hash ] ?? array();
-			$pkgs = array();
-			foreach ( (array) ( $st['packages'] ?? array() ) as $slug => $ver ) {
-				$latest = $catalog[ $slug ]['version'] ?? null;
-				$cls    = $latest && version_compare( (string) $ver, $latest, '<' ) ? 'old' : 'ok';
-				$pkgs[] = $e( $slug ) . ' <span class="' . $cls . '">' . $e( $ver ) . '</span>';
-			}
-			$ts = (int) ( $st['last_seen_ts'] ?? 0 );
-			if ( ! $ts && empty( $st['last_seen'] ) ) {
-				$state = '<span class="muted">● Hiç bağlanmadı</span>';
-			} elseif ( $ts && time() - $ts > 2 * DAY_SECONDS ) {
-				$state = '<span class="old">● ' . (int) floor( ( time() - $ts ) / DAY_SECONDS ) . ' gündür bağlanmadı</span>';
-			} else {
-				$state = '<span class="ok">● Bağlı</span>';
-			}
-			echo '<tr><td><b>' . $e( $conf['name'] ?? '?' ) . '</b><br><small>' . $e( $st['url'] ?? '' ) . '</small></td><td>' . $state . '</td><td>' . $e( $st['last_seen'] ?? '—' ) . '</td><td>' . $e( ( $st['wp'] ?? '' ) . ' / ' . ( $st['php'] ?? '' ) ) . '</td><td>' . ( $pkgs ? implode( '<br>', $pkgs ) : '—' ) . '</td></tr>';
-		}
-		echo '</table>';
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -371,7 +262,7 @@ final class Server {
 		throw new HttpError( 'Invalid site key', 403 );
 	}
 
-	private function site_allows( array $site, string $slug ): bool {
+	public function site_allows( array $site, string $slug ): bool {
 		if ( '*' === $site['packages'] ) {
 			return true;
 		}
@@ -597,7 +488,7 @@ final class Server {
 		return $s;
 	}
 
-	private function base_url(): string {
+	public function base_url(): string {
 		if ( ! empty( $this->config['base_url'] ) ) {
 			return rtrim( $this->config['base_url'], '/' );
 		}

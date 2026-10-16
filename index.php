@@ -6,6 +6,7 @@
 
 require __DIR__ . '/lib/config.php';
 require __DIR__ . '/lib/server.php';
+require __DIR__ . '/lib/panel.php';
 
 $yt_config = YTUpdate\load_config( __DIR__ );
 $yt_path   = (string) parse_url( $_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH );

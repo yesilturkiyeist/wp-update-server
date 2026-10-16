@@ -1,9 +1,9 @@
 <?php
 /**
- * Site anahtarı veya /status parolası üretir.
+ * Site anahtarı veya /admin parolası üretir.
  *
  *   php bin/keygen.php "Hayır Kapısı"   → yeni site anahtarı + YT_UPDATE_SITES / config satırı
- *   php bin/keygen.php --password       → /status parolası için hash
+ *   php bin/keygen.php --password       → /admin parolası için hash
  *
  * Docker'da: docker exec -it <container> php bin/keygen.php "Site adı"
  */

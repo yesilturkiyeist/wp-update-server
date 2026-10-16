@@ -1,22 +1,21 @@
 <?php
 /**
- * İsteğe bağlı: ortam değişkeni kullanamayan hosting için.
+ * GEREK YOK: tüm ayarlar /admin panelinden girilir (data/settings.json).
  *
- * Git'ten deploy ederken (Coolify, Docker, Hostinger Git) bu dosyaya gerek yok;
- * ayarları ortam değişkeni olarak girin (README.md). Bu dosyayı config.php
- * adıyla kopyalarsanız buradaki dolu değerler ortam değişkenlerini ezer.
- * config.php git'e girmez.
+ * Yalnız dosyayla yönetmek isterseniz config.php adıyla kopyalayın. Buradaki dolu
+ * değerler ortam değişkenlerini ezer; panelde girilenler de bunları ezer.
+ * Buradaki siteler panelde salt okunur görünür. config.php git'e girmez.
  */
 return array(
-	'base_url'            => 'https://update.ustageliyor.org',
+	'base_url'            => '',   // boşsa istekten bulunur, ör. https://update.yesilturkiyeist.org
 	'repo'                => 'yesilturkiyeist/wp-paketler',
 	'github_token'        => '',   // fine-grained token, yalnız wp-paketler, Contents: Read-only
 	'webhook_secret'      => '',   // Actions secret UPDATE_WEBHOOK_SECRET ile aynı
 	'admin_user'          => 'admin',
-	'admin_password'      => '',   // /status parolası, en az 10 karakter (ya da admin_password_hash)
+	'admin_password'      => '',   // /admin parolası, en az 10 karakter (ya da admin_password_hash)
 	'admin_password_hash' => '',   // php bin/keygen.php --password
 
-	// Anahtar = site anahtarının sha256'sı. Üretmek: /status › "Site anahtarı üret"
+	// Anahtar = site anahtarının sha256'sı. Üretmek: /admin › "Site ekle"
 	// ya da SSH varsa php bin/keygen.php "Site adı".
 	// packages: '*' ya da array( 'hayirkapisi', 'yt-bagis' ); channel: 'stable' | 'beta'.
 	'sites' => array(
