@@ -24,12 +24,17 @@ WordPress siteleri (YT Güncelleyici)
 
 `docker-compose.yml` aynı ayarların compose karşılığıdır.
 
-### B) Paylaşımlı PHP hosting (Hostinger Git vb.)
+### B) Paylaşımlı PHP hosting (Hostinger): zip ile
 
-1. Subdomain'in kök klasörüne bu repoyu Git ile bağlayın (PHP 7.4+, curl, HTTPS).
-2. Hosting ortam değişkeni desteklemiyorsa `config.sample.php` → `config.php` kopyalayıp doldurun
-   (config.php git'e girmez, deploy'da silinmez).
-3. `data/` yazılabilir olmalı. `.htaccess` gelir; Nginx için aşağıdaki örneğe bakın.
+1. hPanel'de `update.ustageliyor.org` subdomain'ini açın (normal PHP sitesi), SSL'i açın.
+2. [Releases](../../releases/latest) sayfasından `wp-update-server.zip`'i indirin, Dosya Yöneticisi'nde
+   subdomain'in kök klasörüne yükleyip açın.
+3. `config.sample.php`'yi `config.php` olarak kopyalayın; `github_token` ve `admin_password`'ü doldurun.
+4. `https://update.ustageliyor.org/status` › **Site anahtarı üret**: her site için çıkan satırı
+   `config.php` › `sites` içine yapıştırın, anahtarı sitenin `wp-config.php`'sine yazın.
+5. Sonraki sürümlerde aynı zip'i üstüne açmanız yeterli: zip'te `config.php` ve `data/` içeriği yok, korunur.
+
+`data/` yazılabilir olmalı. Nginx için aşağıdaki örneğe bakın.
 
 ## Ortam değişkenleri
 
@@ -46,6 +51,8 @@ WordPress siteleri (YT Güncelleyici)
 | `YT_UPDATE_DATA_DIR` | Varsayılan `./data` |
 
 ## Site eklemek
+
+En kolayı `/status` › **Site anahtarı üret**. SSH varsa:
 
 ```
 php bin/keygen.php "Hayır Kapısı"            # Docker: docker exec -it <container> php bin/keygen.php "Hayır Kapısı"

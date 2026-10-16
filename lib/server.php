@@ -8,7 +8,7 @@
 
 namespace YTUpdate;
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 class HttpError extends \Exception {}
 
@@ -233,8 +233,15 @@ final class Server {
 			@unlink( $this->data_dir . '/releases.json' );
 		}
 
-		$catalog = $this->catalog( 'beta' );
-		$stable  = $this->catalog( 'stable' );
+		$gh_error = '';
+		try {
+			$catalog = $this->catalog( 'beta' );
+			$stable  = $this->catalog( 'stable' );
+		} catch ( \Throwable $ex ) {
+			$catalog  = array();
+			$stable   = array();
+			$gh_error = 'GitHub release listesi okunamadı: token ve repo ayarını kontrol edin.';
+		}
 		$sites   = $this->read_json( $this->data_dir . '/sites.json' );
 
 		header( 'Content-Type: text/html; charset=utf-8' );
@@ -243,9 +250,28 @@ final class Server {
 			return htmlspecialchars( (string) $s, ENT_QUOTES, 'UTF-8' );
 		};
 		echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YT Update Server</title>';
-		echo '<style>body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#1d2a22;background:#f6f8f6}h1{font-size:20px}h2{font-size:16px;margin-top:28px}table{border-collapse:collapse;background:#fff;width:100%;max-width:1100px}td,th{border-bottom:1px solid #e3e8e4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#eef3ef}.old{color:#b4581c;font-weight:600}.ok{color:#247833}small{color:#667}</style>';
+		echo '<style>pre{background:#fff;border:1px solid #e3e8e4;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-all}body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#1d2a22;background:#f6f8f6}h1{font-size:20px}h2{font-size:16px;margin-top:28px}table{border-collapse:collapse;background:#fff;width:100%;max-width:1100px}td,th{border-bottom:1px solid #e3e8e4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#eef3ef}.old{color:#b4581c;font-weight:600}.ok{color:#247833}small{color:#667}</style>';
 		echo '<h1>YT Update Server <small>' . $e( VERSION ) . ' · ' . $e( $this->config['repo'] ) . '</small></h1>';
 		echo '<p><a href="?flush=1">GitHub\'dan yeniden oku</a></p>';
+		if ( $gh_error ) {
+			echo '<p class="old">' . $e( $gh_error ) . '</p>';
+		}
+
+		// SSH olmayan hosting için: site anahtarı üretici. Anahtar yalnız bu ekranda bir kez görünür, saklanmaz.
+		$new_name = isset( $_POST['site_name'] ) ? trim( (string) $_POST['site_name'] ) : '';
+		if ( '' !== $new_name ) {
+			$key  = 'ytu_' . bin2hex( random_bytes( 24 ) );
+			$hash = hash( 'sha256', $key );
+			$site = array( 'name' => mb_substr( $new_name, 0, 80 ), 'packages' => '*', 'channel' => 'stable' );
+			echo '<h2>Yeni site anahtarı: ' . $e( $site['name'] ) . '</h2>';
+			echo '<p><b>1) Sitenin wp-config.php dosyasına</b> (bu sayfayı kapatınca anahtar bir daha gösterilmez):</p>';
+			echo '<pre>define( \'YT_UPDATE_KEY\', \'' . $e( $key ) . '\' );</pre>';
+			echo '<p><b>2) Sunucudaki config.php › sites içine:</b></p>';
+			echo '<pre>\'' . $e( $hash ) . '\' => array( \'name\' => ' . $e( var_export( $site['name'], true ) ) . ', \'packages\' => \'*\', \'channel\' => \'stable\' ),</pre>';
+			echo '<p>Ortam değişkeni kullanıyorsanız YT_UPDATE_SITES JSON öğesi:</p>';
+			echo '<pre>"' . $e( $hash ) . '": ' . $e( json_encode( $site, JSON_UNESCAPED_UNICODE ) ) . '</pre>';
+		}
+		echo '<h2>Site anahtarı üret</h2><form method="post"><input name="site_name" placeholder="Site adı (ör. Hayır Kapısı)" required style="padding:6px;width:260px"> <button style="padding:6px 12px">Üret</button></form>';
 
 		echo '<h2>Paketler</h2><table><tr><th>Paket</th><th>Tür</th><th>Son sürüm</th><th>Yayın</th></tr>';
 		foreach ( $catalog as $slug => $r ) {
