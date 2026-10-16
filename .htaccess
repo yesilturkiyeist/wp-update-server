@@ -1,0 +1,16 @@
+# YT Update Server (Apache / LiteSpeed)
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	# Basic/Bearer Authorization başlığını PHP'ye geçir (FastCGI/LiteSpeed).
+	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+	# config, lib, data, bin klasörlerine ve gizli dosyalara doğrudan erişim yok.
+	RewriteRule ^(config\.php|config\.sample\.php|lib/|data/|bin/|\.) - [F,L]
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteRule ^ index.php [L]
+</IfModule>
+
+<FilesMatch "^(config\.php|config\.sample\.php)$">
+	Require all denied
+</FilesMatch>

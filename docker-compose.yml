@@ -1,0 +1,19 @@
+# Coolify / docker compose örneği. Değerleri panelin ortam değişkenlerine girin.
+services:
+  update:
+    build: .
+    restart: unless-stopped
+    environment:
+      YT_UPDATE_BASE_URL: https://update.ustageliyor.org
+      YT_UPDATE_REPO: yesilturkiyeist/wp-paketler
+      YT_UPDATE_GITHUB_TOKEN: ${YT_UPDATE_GITHUB_TOKEN}
+      YT_UPDATE_WEBHOOK_SECRET: ${YT_UPDATE_WEBHOOK_SECRET}
+      YT_UPDATE_SITES: ${YT_UPDATE_SITES}
+      YT_UPDATE_ADMIN_USER: ${YT_UPDATE_ADMIN_USER:-admin}
+      YT_UPDATE_ADMIN_PASSWORD: ${YT_UPDATE_ADMIN_PASSWORD}
+    volumes:
+      - update-data:/var/www/html/data
+    ports:
+      - "8080:80"
+volumes:
+  update-data:
